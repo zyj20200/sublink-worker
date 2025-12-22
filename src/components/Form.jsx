@@ -2,7 +2,6 @@
 /** @jsxImportSource hono/jsx */
 import { CustomRules } from './CustomRules.jsx';
 import { ValidatedTextarea } from './ValidatedTextarea.jsx';
-import { formLogicFn } from './formLogic.js';
 import { UNIFIED_RULES, PREDEFINED_RULE_SETS } from '../config/index.js';
 
 const LINK_FIELDS = [
@@ -43,11 +42,11 @@ export const Form = (props) => {
   const scriptContent = `
     window.APP_TRANSLATIONS = ${JSON.stringify(translations)};
     window.PREDEFINED_RULE_SETS = ${JSON.stringify(PREDEFINED_RULE_SETS)};
-    (${formLogicFn.toString()})();
   `;
 
   return (
     <div x-data="formData()" x-init="init()" class="max-w-4xl mx-auto">
+      <script src="/js/formLogic.js"></script>
       <form {...{'x-on:submit.prevent': 'submitForm'}} class="space-y-8">
 
       {/* Input Section */}
