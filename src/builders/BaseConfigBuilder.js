@@ -13,6 +13,8 @@ export class BaseConfigBuilder {
         this.userAgent = userAgent;
         this.appliedOverrideKeys = new Set();
         this.groupByCountry = groupByCountry;
+        this.providerUrls = [];  // URLs to use as providers (auto-sync)
+        this.subscriptionGroups = []; // Track proxies by subscription source
     }
 
     async build() {
@@ -73,13 +75,132 @@ export class BaseConfigBuilder {
 
         // Otherwise, line-by-line processing (URLs, subscription content, remote lists, etc.)
         const urls = input.split('\n').filter(url => url.trim() !== '');
+        let currentGroupName = null;
+        let currentGroupProxies = [];
+
+        const flushCurrentGroup = () => {
+            if (currentGroupName && currentGroupProxies.length > 0) {
+                this.subscriptionGroups.push({
+                    name: currentGroupName,
+                    type: 'proxies',
+                    proxies: [...currentGroupProxies]
+                });
+                currentGroupProxies = [];
+            }
+        };
+
         for (const url of urls) {
+            // Check for group header
+            if (url.startsWith('### GROUP:')) {
+                flushCurrentGroup();
+                currentGroupName = url.substring(10).trim();
+                continue;
+            }
+
             let processedUrls = tryDecodeSubscriptionLines(url);
             if (!Array.isArray(processedUrls)) {
                 processedUrls = [processedUrls];
             }
 
             for (const processedUrl of processedUrls) {
+                const trimmedUrl = typeof processedUrl === 'string' ? processedUrl.trim() : '';
+
+                // Check if it's an HTTP(S) URL - may use as provider if format matches
+                if (trimmedUrl.startsWith('http://') || trimmedUrl.startsWith('https://')) {
+                    const { fetchSubscriptionWithFormat } = await import('../parsers/subscription/httpSubscriptionFetcher.js');
+
+                    let fetchUrl = trimmedUrl;
+                    let urlSubName = null;
+                    try {
+                        const urlObj = new URL(trimmedUrl);
+                        if (urlObj.hash) {
+                            urlSubName = decodeURIComponent(urlObj.hash.slice(1));
+                            urlObj.hash = '';
+                            fetchUrl = urlObj.toString();
+                        }
+                    } catch (e) {}
+
+                    try {
+                        const fetchResult = await fetchSubscriptionWithFormat(fetchUrl, this.userAgent);
+                        if (fetchResult) {
+                            const { content, format, url: originalUrl } = fetchResult;
+
+                            // If format is compatible with target client, use as provider
+                            if (this.isCompatibleProviderFormat(format)) {
+                                this.providerUrls.push(originalUrl);
+                                
+                                let finalName = currentGroupName || urlSubName;
+                                if (!finalName) {
+                                    try {
+                                        finalName = new URL(originalUrl).hostname;
+                                    } catch {
+                                        finalName = `Provider ${this.providerUrls.length}`;
+                                    }
+                                }
+                                this.subscriptionGroups.push({
+                                    name: finalName,
+                                    type: 'provider',
+                                    providerIndex: this.providerUrls.length - 1
+                                });
+
+                                continue;  // Skip parsing, will be used as provider
+                            }
+
+                            // Otherwise parse the content as usual
+                            const result = parseSubscriptionContent(content);
+                            const currentSubProxies = [];
+
+                            if (result && typeof result === 'object' && (result.type === 'yamlConfig' || result.type === 'singboxConfig' || result.type === 'surgeConfig')) {
+                                if (result.config) {
+                                    this.applyConfigOverrides(result.config);
+                                }
+                                if (Array.isArray(result.proxies)) {
+                                    result.proxies.forEach(proxy => {
+                                        if (proxy && typeof proxy === 'object' && proxy.tag) {
+                                            parsedItems.push(proxy);
+                                            currentSubProxies.push(proxy);
+                                        }
+                                    });
+                                }
+                            } else if (Array.isArray(result)) {
+                                for (const item of result) {
+                                    if (item && typeof item === 'object' && item.tag) {
+                                        parsedItems.push(item);
+                                        currentSubProxies.push(item);
+                                    } else if (typeof item === 'string') {
+                                        const subResult = await ProxyParser.parse(item, this.userAgent);
+                                        if (subResult) {
+                                            parsedItems.push(subResult);
+                                            currentSubProxies.push(subResult);
+                                        }
+                                    }
+                                }
+                            }
+
+                            if (currentSubProxies.length > 0) {
+                                let finalName = currentGroupName || urlSubName;
+                                if (!finalName) {
+                                    try {
+                                        finalName = new URL(originalUrl).hostname;
+                                    } catch {
+                                        finalName = `Subscription ${this.subscriptionGroups.length + 1}`;
+                                    }
+                                }
+                                this.subscriptionGroups.push({
+                                    name: finalName,
+                                    type: 'proxies',
+                                    proxies: currentSubProxies.map(p => p.tag)
+                                });
+                            }
+                            continue;
+                        }
+                    } catch (error) {
+                        console.error('Error processing HTTP subscription:', error);
+                    }
+                    continue;
+                }
+
+                // Non-HTTP URLs (protocol URIs like ss://, vmess://, etc.)
                 const result = await ProxyParser.parse(processedUrl, this.userAgent);
                 // Handle yamlConfig, singboxConfig, and surgeConfig types (they have the same structure)
                 if (result && typeof result === 'object' && (result.type === 'yamlConfig' || result.type === 'singboxConfig' || result.type === 'surgeConfig')) {
@@ -90,6 +211,9 @@ export class BaseConfigBuilder {
                         result.proxies.forEach(proxy => {
                             if (proxy && typeof proxy === 'object' && proxy.tag) {
                                 parsedItems.push(proxy);
+                                if (currentGroupName) {
+                                    currentGroupProxies.push(proxy.tag);
+                                }
                             }
                         });
                     }
@@ -97,22 +221,52 @@ export class BaseConfigBuilder {
                 }
                 if (Array.isArray(result)) {
                     for (const item of result) {
-                        if (item && typeof item === 'object' && item.tag) {
+                        if (item && typeof item === 'object') {
+                            if (!item.tag) {
+                                item.tag = `Proxy ${parsedItems.length + 1}`;
+                            }
                             parsedItems.push(item);
+                            if (currentGroupName) {
+                                currentGroupProxies.push(item.tag);
+                            }
                         } else if (typeof item === 'string') {
                             const subResult = await ProxyParser.parse(item, this.userAgent);
                             if (subResult) {
+                                if (!subResult.tag) {
+                                    subResult.tag = `Proxy ${parsedItems.length + 1}`;
+                                }
                                 parsedItems.push(subResult);
+                                if (currentGroupName) {
+                                    currentGroupProxies.push(subResult.tag);
+                                }
                             }
                         }
                     }
                 } else if (result) {
+                    if (!result.tag) {
+                        result.tag = `Proxy ${parsedItems.length + 1}`;
+                    }
                     parsedItems.push(result);
+                    if (currentGroupName) {
+                        currentGroupProxies.push(result.tag);
+                    }
                 }
             }
         }
+        
+        flushCurrentGroup();
 
         return parsedItems;
+    }
+
+    /**
+     * Check if subscription format is compatible for use as a provider
+     * Override in child classes to enable provider support
+     * @param {'clash'|'singbox'|'unknown'} format - Detected subscription format
+     * @returns {boolean} - True if format can be used as provider
+     */
+    isCompatibleProviderFormat(format) {
+        return false;  // Default: no provider support
     }
 
     applyConfigOverrides(overrides) {
@@ -215,6 +369,7 @@ export class BaseConfigBuilder {
         const outbounds = this.getOutboundsList();
         const proxyList = this.getProxyList();
 
+        this.addSubscriptionGroups(); // Add subscription groups first so they can be used in other groups
         this.addAutoSelectGroup(proxyList);
         this.addNodeSelectGroup(proxyList);
         if (this.groupByCountry) {
@@ -223,6 +378,10 @@ export class BaseConfigBuilder {
         this.addOutboundGroups(outbounds, proxyList);
         this.addCustomRuleGroups(proxyList);
         this.addFallBackGroup(proxyList);
+    }
+
+    addSubscriptionGroups() {
+        // Override in child class
     }
 
     generateRules() {

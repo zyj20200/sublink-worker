@@ -6,7 +6,7 @@ import { addProxyWithDedup } from './helpers/proxyHelpers.js';
 import { buildSelectorMembers as buildSelectorMemberList, buildNodeSelectMembers, uniqueNames } from './helpers/groupBuilder.js';
 
 export class SingboxConfigBuilder extends BaseConfigBuilder {
-    constructor(inputString, selectedRules, customRules, baseConfig, lang, userAgent, groupByCountry = false, enableClashUI = false, externalController, externalUiDownloadUrl) {
+    constructor(inputString, selectedRules, customRules, baseConfig, lang, userAgent, groupByCountry = false, enableClashUI = false, externalController, externalUiDownloadUrl, singboxVersion = '1.12') {
         const resolvedBaseConfig = baseConfig ?? SING_BOX_CONFIG;
         super(inputString, resolvedBaseConfig, lang, userAgent, groupByCountry);
 
@@ -17,10 +17,52 @@ export class SingboxConfigBuilder extends BaseConfigBuilder {
         this.enableClashUI = enableClashUI;
         this.externalController = externalController;
         this.externalUiDownloadUrl = externalUiDownloadUrl;
+        this.singboxVersion = singboxVersion;  // '1.11' or '1.12'
 
         if (this.config?.dns?.servers?.length > 0) {
             this.config.dns.servers[0].detour = this.t('outboundNames.Node Select');
         }
+    }
+
+    /**
+     * Check if subscription format is compatible for use as Sing-Box outbound_provider
+     * Only available in Sing-Box 1.12+
+     * @param {'clash'|'singbox'|'unknown'} format - Detected subscription format
+     * @returns {boolean} - True if format is Sing-Box JSON and version supports providers
+     */
+    isCompatibleProviderFormat(format) {
+        // outbound_providers only supported in Sing-Box 1.12+
+        if (this.singboxVersion === '1.11') {
+            return false;
+        }
+        return format === 'singbox';
+    }
+
+    /**
+     * Generate outbound_providers configuration from collected URLs
+     * @returns {object[]} - Array of outbound provider objects
+     */
+    generateOutboundProviders() {
+        return this.providerUrls.map((url, index) => ({
+            tag: `provider${index + 1}`,
+            type: 'http',
+            download_url: url,
+            path: `./providers/provider${index + 1}.json`,
+            download_interval: '24h',
+            health_check: {
+                enabled: true,
+                url: 'https://www.gstatic.com/generate_204',
+                interval: '5m'
+            }
+        }));
+    }
+
+    /**
+     * Get list of provider tags
+     * @returns {string[]} - Array of provider tags
+     */
+    getProviderTags() {
+        return this.providerUrls.map((_, index) => `provider${index + 1}`);
     }
 
     getProxies() {
@@ -81,15 +123,51 @@ export class SingboxConfigBuilder extends BaseConfigBuilder {
         return (this.config.outbounds || []).some(outbound => normalize(outbound?.tag) === target);
     }
 
+    addSubscriptionGroups() {
+        if (!this.subscriptionGroups || this.subscriptionGroups.length === 0) return;
+
+        this.subscriptionGroupNames = [];
+        this.config.outbounds = this.config.outbounds || [];
+
+        this.subscriptionGroups.forEach(group => {
+            const groupName = group.name;
+            if (this.hasOutboundTag(groupName)) return;
+
+            const newGroup = {
+                tag: groupName,
+                type: 'selector',
+                outbounds: []
+            };
+
+            if (group.type === 'provider') {
+                newGroup.providers = [`provider${group.providerIndex + 1}`];
+            } else {
+                newGroup.outbounds = group.proxies;
+            }
+            
+            this.config.outbounds.push(newGroup);
+            this.subscriptionGroupNames.push(groupName);
+        });
+    }
+
     addAutoSelectGroup(proxyList) {
         this.config.outbounds = this.config.outbounds || [];
         const tag = this.t('outboundNames.Auto Select');
         if (this.hasOutboundTag(tag)) return;
-        this.config.outbounds.unshift({
+
+        const group = {
             type: "urltest",
             tag,
-            outbounds: deepCopy(uniqueNames(proxyList)),
-        });
+            outbounds: deepCopy(uniqueNames(proxyList))
+        };
+
+        // Add 'providers' field if we have outbound_providers
+        const providerTags = this.getProviderTags();
+        if (providerTags.length > 0) {
+            group.providers = providerTags;
+        }
+
+        this.config.outbounds.unshift(group);
     }
 
     addNodeSelectGroup(proxyList) {
@@ -101,13 +179,23 @@ export class SingboxConfigBuilder extends BaseConfigBuilder {
             translator: this.t,
             groupByCountry: this.groupByCountry,
             manualGroupName: this.manualGroupName,
-            countryGroupNames: this.countryGroupNames
+            countryGroupNames: this.countryGroupNames,
+            subscriptionGroupNames: this.subscriptionGroupNames
         });
-        this.config.outbounds.unshift({
+
+        const group = {
             type: "selector",
             tag,
             outbounds: members
-        });
+        };
+
+        // Add 'providers' field if we have outbound_providers
+        const providerTags = this.getProviderTags();
+        if (providerTags.length > 0) {
+            group.providers = providerTags;
+        }
+
+        this.config.outbounds.unshift(group);
     }
 
     buildSelectorMembers(proxyList = []) {
@@ -116,7 +204,8 @@ export class SingboxConfigBuilder extends BaseConfigBuilder {
             translator: this.t,
             groupByCountry: this.groupByCountry,
             manualGroupName: this.manualGroupName,
-            countryGroupNames: this.countryGroupNames
+            countryGroupNames: this.countryGroupNames,
+            subscriptionGroupNames: this.subscriptionGroupNames
         });
     }
 
@@ -227,6 +316,11 @@ export class SingboxConfigBuilder extends BaseConfigBuilder {
         const { site_rule_sets, ip_rule_sets } = generateRuleSets(this.selectedRules, this.customRules);
 
         this.config.route.rule_set = [...site_rule_sets, ...ip_rule_sets];
+
+        // Add outbound_providers if we have any
+        if (this.providerUrls.length > 0) {
+            this.config.outbound_providers = this.generateOutboundProviders();
+        }
 
         rules.filter(rule => !!rule.domain_suffix || !!rule.domain_keyword).map(rule => {
             this.config.route.rules.push({

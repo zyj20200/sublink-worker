@@ -21,7 +21,7 @@ export function withDirectReject(options = []) {
     ]);
 }
 
-export function buildNodeSelectMembers({ proxyList = [], translator, groupByCountry = false, manualGroupName, countryGroupNames = [] }) {
+export function buildNodeSelectMembers({ proxyList = [], translator, groupByCountry = false, manualGroupName, countryGroupNames = [], subscriptionGroupNames = [] }) {
     if (!translator) {
         throw new Error('buildNodeSelectMembers requires a translator function');
     }
@@ -30,16 +30,18 @@ export function buildNodeSelectMembers({ proxyList = [], translator, groupByCoun
         ? [
             autoName,
             ...(manualGroupName ? [manualGroupName] : []),
+            ...subscriptionGroupNames,
             ...countryGroupNames
         ]
         : [
             autoName,
+            ...subscriptionGroupNames,
             ...proxyList
         ];
     return withDirectReject(base);
 }
 
-export function buildSelectorMembers({ proxyList = [], translator, groupByCountry = false, manualGroupName, countryGroupNames = [] }) {
+export function buildSelectorMembers({ proxyList = [], translator, groupByCountry = false, manualGroupName, countryGroupNames = [], subscriptionGroupNames = [] }) {
     if (!translator) {
         throw new Error('buildSelectorMembers requires a translator function');
     }
@@ -48,10 +50,12 @@ export function buildSelectorMembers({ proxyList = [], translator, groupByCountr
             translator('outboundNames.Node Select'),
             translator('outboundNames.Auto Select'),
             ...(manualGroupName ? [manualGroupName] : []),
+            ...subscriptionGroupNames,
             ...countryGroupNames
         ]
         : [
             translator('outboundNames.Node Select'),
+            ...subscriptionGroupNames,
             ...proxyList
         ];
     return withDirectReject(base);

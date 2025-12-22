@@ -1,7 +1,6 @@
 /** @jsxRuntime automatic */
 /** @jsxImportSource hono/jsx */
 import { CustomRules } from './CustomRules.jsx';
-import { TextareaWithActions } from './TextareaWithActions.jsx';
 import { ValidatedTextarea } from './ValidatedTextarea.jsx';
 import { formLogicFn } from './formLogic.js';
 import { UNIFIED_RULES, PREDEFINED_RULE_SETS } from '../config/index.js';
@@ -34,7 +33,11 @@ export const Form = (props) => {
     customShortCode: t('customShortCode'),
     optional: t('optional'),
     customShortCodePlaceholder: t('customShortCodePlaceholder'),
-    showFullLinks: t('showFullLinks')
+    showFullLinks: t('showFullLinks'),
+    addSource: t('addSource'),
+    sourceName: t('sourceName'),
+    sourceNamePlaceholder: t('sourceNamePlaceholder'),
+    sourceContent: t('sourceContent')
   };
 
   const scriptContent = `
@@ -49,48 +52,63 @@ export const Form = (props) => {
 
       {/* Input Section */}
       <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700 p-6 transition-all duration-300 hover:shadow-md group">
-        <TextareaWithActions
-          id="input"
-          name="input"
-          label={t('shareUrls')}
-          labelPrefix={
-            <span class="w-8 h-8 rounded-lg bg-primary-50 dark:bg-primary-900/20 text-primary-600 dark:text-primary-400 flex items-center justify-center">
-              <i class="fas fa-link text-sm"></i>
-            </span>
-          }
-          model="input"
-          rows={5}
-          placeholder={t('urlPlaceholder')}
-          required
-          labelActionsWrapperClass="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200"
-          labelActions={[
-            {
-              key: 'paste',
-              icon: 'fas fa-paste',
-              label: t('paste'),
-              hideLabelOnMobile: true,
-              className:
-                'px-2 py-1 text-xs font-medium bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 rounded hover:bg-primary-50 dark:hover:bg-primary-900/20 hover:text-primary-600 dark:hover:text-primary-400 transition-colors flex items-center gap-1',
-              title: t('paste'),
-              attrs: {
-                'x-on:click': "navigator.clipboard.readText().then(text => input = text).catch(() => {})"
-              }
-            },
-            {
-              key: 'clear',
-              icon: 'fas fa-times',
-              label: t('clear'),
-              hideLabelOnMobile: true,
-              className:
-                'px-2 py-1 text-xs font-medium bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 rounded hover:bg-red-50 dark:hover:bg-red-900/20 hover:text-red-600 dark:hover:text-red-400 transition-colors flex items-center gap-1',
-              title: t('clear'),
-              attrs: {
-                'x-on:click': "input = ''",
-                'x-show': 'input'
-              }
-            }
-          ]}
-        />
+        <div class="flex items-center justify-between mb-4">
+            <div class="flex items-center gap-2">
+                <span class="w-8 h-8 rounded-lg bg-primary-50 dark:bg-primary-900/20 text-primary-600 dark:text-primary-400 flex items-center justify-center">
+                    <i class="fas fa-link text-sm"></i>
+                </span>
+                <h3 class="text-lg font-medium text-gray-900 dark:text-white">{t('shareUrls')}</h3>
+            </div>
+            <button
+                type="button"
+                x-on:click="addSource()"
+                class="px-3 py-1.5 text-sm font-medium text-primary-600 dark:text-primary-400 bg-primary-50 dark:bg-primary-900/20 rounded-lg hover:bg-primary-100 dark:hover:bg-primary-900/40 transition-colors flex items-center gap-1"
+            >
+                <i class="fas fa-plus"></i>
+                <span>{t('addSource')}</span>
+            </button>
+        </div>
+
+        <div class="space-y-6">
+            <template x-for="(source, index) in sources" x-bind:key="index">
+                <div class="relative p-4 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50">
+                    <div class="absolute top-2 right-2" x-show="sources.length > 1">
+                        <button
+                            type="button"
+                            x-on:click="removeSource(index)"
+                            class="p-1.5 text-gray-400 hover:text-red-500 transition-colors rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20"
+                        >
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
+
+                    <div class="space-y-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                                {t('sourceName')}
+                            </label>
+                            <input
+                                type="text"
+                                x-model="source.name"
+                                class="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-shadow"
+                                placeholder={t('sourceNamePlaceholder')}
+                            />
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                                {t('sourceContent')}
+                            </label>
+                            <textarea
+                                x-model="source.content"
+                                rows="3"
+                                class="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-shadow font-mono text-sm"
+                                placeholder={t('urlPlaceholder')}
+                            ></textarea>
+                        </div>
+                    </div>
+                </div>
+            </template>
+        </div>
       </div>
 
       {/* Advanced Options Toggle */}

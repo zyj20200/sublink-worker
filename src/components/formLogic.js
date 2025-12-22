@@ -1,9 +1,91 @@
-import { parseSurgeConfigInput } from '../utils/surgeConfigParser.js';
 
 export const formLogicFn = (t) => {
+    // Inline surgeConfigParser logic
+    function parseSurgeValue(rawValue = '') {
+        const trimmed = rawValue.trim();
+        if (trimmed === '') return '';
+        const unquoted = trimmed.replace(/^"(.*)"$/, '$1');
+        const lower = unquoted.toLowerCase();
+        if (lower === 'true') return true;
+        if (lower === 'false') return false;
+        if (/^-?\d+(\.\d+)?$/.test(unquoted)) {
+            return Number(unquoted);
+        }
+        return unquoted;
+    }
+
+    function convertSurgeIniToJson(content) {
+        const lines = content.split(/\r?\n/);
+        const config = {};
+        let currentSection = null;
+
+        const ensureObject = (key) => {
+            if (!config[key]) config[key] = {};
+            return config[key];
+        };
+
+        const ensureArray = (key) => {
+            if (!config[key]) config[key] = [];
+            return config[key];
+        };
+
+        for (const rawLine of lines) {
+            const line = rawLine.trim();
+            if (!line || line.startsWith(';') || line.startsWith('#')) {
+                continue;
+            }
+            const sectionMatch = line.match(/^\[(.+)]$/);
+            if (sectionMatch) {
+                currentSection = sectionMatch[1].trim();
+                continue;
+            }
+            if (!currentSection) {
+                continue;
+            }
+            const sectionName = currentSection.toLowerCase();
+            if (sectionName === 'general' || sectionName === 'replica') {
+                const equalsIndex = line.indexOf('=');
+                if (equalsIndex === -1) continue;
+                const key = line.slice(0, equalsIndex).trim();
+                const value = line.slice(equalsIndex + 1).trim();
+                if (!key) continue;
+                const target = ensureObject(sectionName);
+                target[key] = parseSurgeValue(value);
+            } else if (sectionName === 'proxy') {
+                ensureArray('proxies').push(line);
+            } else if (sectionName === 'proxy group') {
+                ensureArray('proxy-groups').push(line);
+            } else if (sectionName === 'rule') {
+                ensureArray('rules').push(line);
+            } else {
+                ensureArray(sectionName).push(line);
+            }
+        }
+
+        if (!config.general && !config.replica && !config.proxies && !config['proxy-groups']) {
+            throw new Error('Unable to parse Surge INI content');
+        }
+
+        return config;
+    }
+
+    function parseSurgeConfigInput(content) {
+        const trimmed = content.trim();
+        if (!trimmed) {
+            throw new Error('Config content is empty');
+        }
+        try {
+            return { configObject: JSON.parse(trimmed), convertedFromIni: false };
+        } catch {
+            const converted = convertSurgeIniToJson(content);
+            return { configObject: converted, convertedFromIni: true };
+        }
+    }
+
     window.formData = function () {
         return {
             input: '',
+            sources: [{ name: '', content: '' }],
             showAdvanced: false,
             // Accordion states for each section (二级手风琴状态)
             accordionSections: {
@@ -60,6 +142,20 @@ export const formLogicFn = (t) => {
 
                 // Load saved data
                 this.input = localStorage.getItem('inputTextarea') || '';
+                
+                // Try to load sources from local storage or parse from input
+                const savedSources = localStorage.getItem('inputSources');
+                if (savedSources) {
+                    try {
+                        this.sources = JSON.parse(savedSources);
+                    } catch (e) {
+                        this.sources = [{ name: '', content: this.input }];
+                    }
+                } else if (this.input) {
+                    // Fallback for migration: put existing input into first source
+                    this.sources = [{ name: '', content: this.input }];
+                }
+
                 this.showAdvanced = localStorage.getItem('advancedToggle') === 'true';
                 this.groupByCountry = localStorage.getItem('groupByCountry') === 'true';
                 this.enableClashUI = localStorage.getItem('enableClashUI') === 'true';
@@ -86,10 +182,23 @@ export const formLogicFn = (t) => {
                 this.applyPredefinedRule();
 
                 // Watchers to save state
-                this.$watch('input', val => {
-                    localStorage.setItem('inputTextarea', val);
-                    this.handleInputChange(val);
-                });
+                this.$watch('sources', val => {
+                    localStorage.setItem('inputSources', JSON.stringify(val));
+                    // Reconstruct input string for backward compatibility and API submission
+                    const combinedInput = val.map(s => {
+                        if (!s.content.trim()) return '';
+                        let content = s.content.trim();
+                        if (s.name.trim()) {
+                            return `### GROUP:${s.name.trim()}\n${content}`;
+                        }
+                        return content;
+                    }).filter(Boolean).join('\n');
+                    
+                    this.input = combinedInput;
+                    localStorage.setItem('inputTextarea', combinedInput);
+                    this.handleInputChange(combinedInput);
+                }, { deep: true });
+
                 this.$watch('showAdvanced', val => localStorage.setItem('advancedToggle', val));
                 this.$watch('groupByCountry', val => localStorage.setItem('groupByCountry', val));
                 this.$watch('enableClashUI', val => localStorage.setItem('enableClashUI', val));
@@ -106,6 +215,16 @@ export const formLogicFn = (t) => {
                 });
                 this.$watch('customShortCode', val => localStorage.setItem('customShortCode', val));
                 this.$watch('accordionSections', val => localStorage.setItem('accordionSections', JSON.stringify(val)), { deep: true });
+            },
+
+            addSource() {
+                this.sources.push({ name: '', content: '' });
+            },
+
+            removeSource(index) {
+                if (this.sources.length > 1) {
+                    this.sources.splice(index, 1);
+                }
             },
 
             toggleAccordion(section) {
