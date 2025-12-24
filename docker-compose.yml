@@ -1,7 +1,7 @@
 services:
   worker:
     build: .
-    image: sublink-worker-local
+    container_name: sublink-worker-local
     ports:
       - "8787:8787"
     environment:
