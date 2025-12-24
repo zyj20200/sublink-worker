@@ -26,6 +26,11 @@ export function buildNodeSelectMembers({ proxyList = [], translator, groupByCoun
         throw new Error('buildNodeSelectMembers requires a translator function');
     }
     const autoName = translator('outboundNames.Auto Select');
+    
+    // If we have subscription groups, use them instead of individual proxies
+    // This keeps the main selector clean
+    const hasGroups = subscriptionGroupNames.length > 0 || countryGroupNames.length > 0;
+    
     const base = groupByCountry
         ? [
             autoName,
@@ -36,7 +41,9 @@ export function buildNodeSelectMembers({ proxyList = [], translator, groupByCoun
         : [
             autoName,
             ...subscriptionGroupNames,
-            ...proxyList
+            // Only include individual proxies if we don't have any subscription groups
+            // or if we want to mix them (but user requested to hide detailed nodes)
+            ...(subscriptionGroupNames.length > 0 ? [] : proxyList)
         ];
     return withDirectReject(base);
 }
@@ -45,6 +52,7 @@ export function buildSelectorMembers({ proxyList = [], translator, groupByCountr
     if (!translator) {
         throw new Error('buildSelectorMembers requires a translator function');
     }
+    
     const base = groupByCountry
         ? [
             translator('outboundNames.Node Select'),
@@ -56,7 +64,8 @@ export function buildSelectorMembers({ proxyList = [], translator, groupByCountr
         : [
             translator('outboundNames.Node Select'),
             ...subscriptionGroupNames,
-            ...proxyList
+            // Only include individual proxies if we don't have any subscription groups
+            ...(subscriptionGroupNames.length > 0 ? [] : proxyList)
         ];
     return withDirectReject(base);
 }

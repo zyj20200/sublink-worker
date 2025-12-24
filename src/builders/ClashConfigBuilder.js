@@ -295,10 +295,22 @@ export class ClashConfigBuilder extends BaseConfigBuilder {
         const autoName = this.t('outboundNames.Auto Select');
         if (this.hasProxyGroup(autoName)) return;
 
+        // Determine proxies for Auto Select
+        // If we have groups (country or subscription), use them to keep the list clean
+        // Otherwise fallback to individual proxies
+        let proxies = [];
+        if (this.groupByCountry && this.countryGroupNames.length > 0) {
+            proxies = [...this.countryGroupNames];
+        } else if (this.subscriptionGroupNames && this.subscriptionGroupNames.length > 0) {
+            proxies = [...this.subscriptionGroupNames];
+        } else {
+            proxies = deepCopy(uniqueNames(proxyList));
+        }
+
         const group = {
             name: autoName,
             type: 'url-test',
-            proxies: deepCopy(uniqueNames(proxyList)),
+            proxies: proxies,
             url: 'https://www.gstatic.com/generate_204',
             interval: 300,
             lazy: false
@@ -446,7 +458,8 @@ export class ClashConfigBuilder extends BaseConfigBuilder {
                 translator: this.t,
                 groupByCountry: true,
                 manualGroupName,
-                countryGroupNames
+                countryGroupNames,
+                subscriptionGroupNames: this.subscriptionGroupNames
             });
             nodeSelectGroup.proxies = rebuilt;
         }

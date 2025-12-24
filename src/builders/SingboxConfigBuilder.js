@@ -155,10 +155,22 @@ export class SingboxConfigBuilder extends BaseConfigBuilder {
         const tag = this.t('outboundNames.Auto Select');
         if (this.hasOutboundTag(tag)) return;
 
+        // Determine outbounds for Auto Select
+        // If we have groups (country or subscription), use them to keep the list clean
+        // Otherwise fallback to individual proxies
+        let outbounds = [];
+        if (this.groupByCountry && this.countryGroupNames.length > 0) {
+            outbounds = [...this.countryGroupNames];
+        } else if (this.subscriptionGroupNames && this.subscriptionGroupNames.length > 0) {
+            outbounds = [...this.subscriptionGroupNames];
+        } else {
+            outbounds = deepCopy(uniqueNames(proxyList));
+        }
+
         const group = {
             type: "urltest",
             tag,
-            outbounds: deepCopy(uniqueNames(proxyList))
+            outbounds: outbounds
         };
 
         // Add 'providers' field if we have outbound_providers
@@ -302,7 +314,8 @@ export class SingboxConfigBuilder extends BaseConfigBuilder {
                 translator: this.t,
                 groupByCountry: true,
                 manualGroupName,
-                countryGroupNames
+                countryGroupNames,
+                subscriptionGroupNames: this.subscriptionGroupNames
             });
             nodeSelectGroup.outbounds = rebuilt;
         }

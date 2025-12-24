@@ -217,7 +217,8 @@ export class SurgeConfigBuilder extends BaseConfigBuilder {
             translator: this.t,
             groupByCountry: false,
             manualGroupName: this.manualGroupName,
-            countryGroupNames: this.countryGroupNames
+            countryGroupNames: this.countryGroupNames,
+            subscriptionGroupNames: this.subscriptionGroupNames
         });
     }
 
@@ -227,7 +228,29 @@ export class SurgeConfigBuilder extends BaseConfigBuilder {
             translator: this.t,
             groupByCountry: this.groupByCountry,
             manualGroupName: this.manualGroupName,
-            countryGroupNames: this.countryGroupNames
+            countryGroupNames: this.countryGroupNames,
+            subscriptionGroupNames: this.subscriptionGroupNames
+        });
+    }
+
+    addSubscriptionGroups() {
+        if (!this.subscriptionGroups || this.subscriptionGroups.length === 0) return;
+
+        this.subscriptionGroupNames = [];
+        this.config['proxy-groups'] = this.config['proxy-groups'] || [];
+
+        this.subscriptionGroups.forEach(group => {
+            const groupName = group.name;
+            if (this.hasProxyGroup(groupName)) return;
+
+            // Currently only supporting 'proxies' type for Surge
+            // Providers would require policy-path implementation
+            if (group.type === 'proxies') {
+                this.config['proxy-groups'].push(
+                    this.createProxyGroup(groupName, 'select', group.proxies)
+                );
+                this.subscriptionGroupNames.push(groupName);
+            }
         });
     }
 
@@ -235,11 +258,21 @@ export class SurgeConfigBuilder extends BaseConfigBuilder {
         this.config['proxy-groups'] = this.config['proxy-groups'] || [];
         const name = this.t('outboundNames.Auto Select');
         if (this.hasProxyGroup(name)) return;
+
+        let options = [];
+        if (this.groupByCountry && this.countryGroupNames.length > 0) {
+            options = [...this.countryGroupNames];
+        } else if (this.subscriptionGroupNames && this.subscriptionGroupNames.length > 0) {
+            options = [...this.subscriptionGroupNames];
+        } else {
+            options = this.sanitizeOptions(proxyList);
+        }
+
         this.config['proxy-groups'].push(
             this.createProxyGroup(
                 name,
                 'url-test',
-                this.sanitizeOptions(proxyList),
+                options,
                 ', url=http://www.gstatic.com/generate_204, interval=300'
             )
         );
@@ -332,7 +365,8 @@ export class SurgeConfigBuilder extends BaseConfigBuilder {
                 translator: this.t,
                 groupByCountry: true,
                 manualGroupName,
-                countryGroupNames
+                countryGroupNames,
+                subscriptionGroupNames: this.subscriptionGroupNames
             });
             const newGroup = this.createProxyGroup(this.t('outboundNames.Node Select'), 'select', newOptions);
             this.config['proxy-groups'][nodeSelectGroupIndex] = newGroup;
