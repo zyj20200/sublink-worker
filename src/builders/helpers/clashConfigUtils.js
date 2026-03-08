@@ -3,54 +3,48 @@ export function emitClashRules(rules = [], translator) {
         throw new Error('emitClashRules requires a translator function');
     }
     const results = [];
-    rules
-        .filter(rule => Array.isArray(rule.domain_suffix) && rule.domain_suffix.length > 0)
-        .forEach(rule => {
+
+    // Process rules in order (preserving priority).
+    // Within each rule, emit non-IP entries first, then IP entries,
+    // to reduce DNS leaks (domain rules before IP rules).
+    for (const rule of rules) {
+        const outbound = translator('outboundNames.' + rule.outbound);
+
+        // --- Non-IP rules first ---
+        if (Array.isArray(rule.domain_suffix) && rule.domain_suffix.length > 0) {
             rule.domain_suffix.forEach(suffix => {
-                results.push(`DOMAIN-SUFFIX,${suffix},${translator('outboundNames.' + rule.outbound)}`);
+                results.push(`DOMAIN-SUFFIX,${suffix},${outbound}`);
             });
-        });
-
-    rules
-        .filter(rule => Array.isArray(rule.domain_keyword) && rule.domain_keyword.length > 0)
-        .forEach(rule => {
+        }
+        if (Array.isArray(rule.domain_keyword) && rule.domain_keyword.length > 0) {
             rule.domain_keyword.forEach(keyword => {
-                results.push(`DOMAIN-KEYWORD,${keyword},${translator('outboundNames.' + rule.outbound)}`);
+                results.push(`DOMAIN-KEYWORD,${keyword},${outbound}`);
             });
-        });
-
-    rules
-        .filter(rule => Array.isArray(rule.site_rules) && rule.site_rules[0])
-        .forEach(rule => {
+        }
+        if (Array.isArray(rule.site_rules) && rule.site_rules[0]) {
             rule.site_rules.forEach(site => {
-                results.push(`RULE-SET,${site},${translator('outboundNames.' + rule.outbound)}`);
+                results.push(`RULE-SET,${site},${outbound}`);
             });
-        });
-
-    rules
-        .filter(rule => Array.isArray(rule.ip_rules) && rule.ip_rules[0])
-        .forEach(rule => {
-            rule.ip_rules.forEach(ip => {
-                results.push(`RULE-SET,${ip},${translator('outboundNames.' + rule.outbound)},no-resolve`);
-            });
-        });
-
-    rules
-        .filter(rule => Array.isArray(rule.ip_cidr) && rule.ip_cidr.length > 0)
-        .forEach(rule => {
-            rule.ip_cidr.forEach(cidr => {
-                results.push(`IP-CIDR,${cidr},${translator('outboundNames.' + rule.outbound)},no-resolve`);
-            });
-        });
-
-    rules
-        .filter(rule => Array.isArray(rule.rule_url) && rule.rule_url.length > 0)
-        .forEach(rule => {
+        }
+        if (Array.isArray(rule.rule_url) && rule.rule_url.length > 0) {
             rule.rule_url.forEach(url => {
                 const tag = extractTagFromUrl(url);
-                results.push(`RULE-SET,${tag},${translator('outboundNames.' + rule.outbound)}`);
+                results.push(`RULE-SET,${tag},${outbound}`);
             });
-        });
+        }
+
+        // --- IP rules after ---
+        if (Array.isArray(rule.ip_rules) && rule.ip_rules[0]) {
+            rule.ip_rules.forEach(ip => {
+                results.push(`RULE-SET,${ip},${outbound},no-resolve`);
+            });
+        }
+        if (Array.isArray(rule.ip_cidr) && rule.ip_cidr.length > 0) {
+            rule.ip_cidr.forEach(cidr => {
+                results.push(`IP-CIDR,${cidr},${outbound},no-resolve`);
+            });
+        }
+    }
 
     return results;
 }
