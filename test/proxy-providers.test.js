@@ -40,6 +40,127 @@ const mockSingboxJson = JSON.stringify({
     ]
 });
 
+describe('Force Provider Mode (forceProvider=true)', () => {
+    afterEach(() => {
+        vi.clearAllMocks();
+    });
+
+    describe('Clash Builder with forceProvider', () => {
+        it('should add proxy-providers without fetching when forceProvider is true', async () => {
+            // forceProvider mode should NOT call fetchSubscriptionWithFormat at all
+            const builder = new ClashConfigBuilder(
+                'https://example.com/my-sub?token=abc',
+                [], // selectedRules
+                [], // customRules
+                null, // baseConfig
+                'zh-CN', // lang
+                'test-agent', // userAgent
+                false, // groupByCountry
+                false, // enableClashUI
+                undefined, // externalController
+                undefined, // externalUiDownloadUrl
+                true  // forceProvider
+            );
+            const yamlText = await builder.build();
+            const config = yaml.load(yamlText);
+
+            // fetchSubscriptionWithFormat should NOT have been called
+            expect(fetchSubscriptionWithFormat).not.toHaveBeenCalled();
+
+            // Should have proxy-providers
+            expect(config['proxy-providers']).toBeDefined();
+            expect(Object.keys(config['proxy-providers'])).toHaveLength(1);
+            expect(config['proxy-providers'].provider1).toBeDefined();
+            expect(config['proxy-providers'].provider1.url).toBe('https://example.com/my-sub?token=abc');
+            expect(config['proxy-providers'].provider1.type).toBe('http');
+
+            // proxy-groups should have 'use' field referencing the provider
+            const nodeSelect = config['proxy-groups'].find(g => g.name === '🚀 节点选择');
+            expect(nodeSelect).toBeDefined();
+            expect(nodeSelect.use).toContain('provider1');
+        });
+
+        it('should handle multiple URLs in forceProvider mode', async () => {
+            const builder = new ClashConfigBuilder(
+                'https://example.com/sub1\nhttps://example.com/sub2',
+                [],
+                [],
+                null,
+                'zh-CN',
+                'test-agent',
+                false,
+                false,
+                undefined,
+                undefined,
+                true  // forceProvider
+            );
+            const yamlText = await builder.build();
+            const config = yaml.load(yamlText);
+
+            expect(fetchSubscriptionWithFormat).not.toHaveBeenCalled();
+            expect(config['proxy-providers']).toBeDefined();
+            expect(Object.keys(config['proxy-providers'])).toHaveLength(2);
+            expect(config['proxy-providers'].provider1).toBeDefined();
+            expect(config['proxy-providers'].provider2).toBeDefined();
+        });
+    });
+
+    describe('SingBox Builder with forceProvider', () => {
+        it('should add outbound_providers without fetching when forceProvider is true', async () => {
+            const builder = new SingboxConfigBuilder(
+                'https://example.com/my-sub?token=abc',
+                [],
+                [],
+                null,
+                'zh-CN',
+                'test-agent',
+                false, // groupByCountry
+                false, // enableClashUI
+                undefined, // externalController
+                undefined, // externalUiDownloadUrl
+                '1.12', // singboxVersion
+                true  // forceProvider
+            );
+            await builder.build();
+            const config = builder.config;
+
+            expect(fetchSubscriptionWithFormat).not.toHaveBeenCalled();
+            expect(config.outbound_providers).toBeDefined();
+            expect(config.outbound_providers).toHaveLength(1);
+            expect(config.outbound_providers[0].download_url).toBe('https://example.com/my-sub?token=abc');
+        });
+
+        it('should NOT add outbound_providers for SingBox 1.11 even with forceProvider', async () => {
+            // SingBox 1.11 doesn't support outbound_providers, so forceProvider should be ineffective
+            fetchSubscriptionWithFormat.mockResolvedValue({
+                content: mockSingboxJson,
+                format: 'singbox',
+                url: 'https://example.com/my-sub'
+            });
+
+            const builder = new SingboxConfigBuilder(
+                'https://example.com/my-sub',
+                [],
+                [],
+                null,
+                'zh-CN',
+                'test-agent',
+                false,
+                false,
+                undefined,
+                undefined,
+                '1.11', // singboxVersion that does NOT support providers
+                true    // forceProvider
+            );
+            await builder.build();
+            const config = builder.config;
+
+            // Should NOT have outbound_providers since 1.11 doesn't support them
+            expect(config.outbound_providers).toBeUndefined();
+        });
+    });
+});
+
 describe('Auto Proxy Providers Detection', () => {
     afterEach(() => {
         vi.clearAllMocks();
