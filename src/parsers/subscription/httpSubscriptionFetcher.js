@@ -10,30 +10,39 @@ function decodeContent(text) {
     let decodedText = text;
 
     // Step 1: Try Base64 decoding.
-    // Strip all whitespace first, since base64 content may contain line breaks
-    // (e.g. MIME-style 76-char wrapping).
-    const sanitized = text.replace(/\s+/g, '');
-    const isBase64Like = /^[A-Za-z0-9+/]+=*$/.test(sanitized) && sanitized.length > 0;
-    if (isBase64Like) {
+    // Strip BOM, all whitespace (MIME base64 may wrap at 76 chars), and null bytes.
+    // Also handle URL-safe base64 variant (- → +, _ → /).
+    const sanitized = text
+        .replace(/^\uFEFF/, '')
+        .replace(/[\s\0]+/g, '')
+        .replace(/-/g, '+')
+        .replace(/_/g, '/');
+
+    if (sanitized.length > 0) {
         try {
             const decoded = decodeBase64(sanitized);
             // Only accept the decoded result if it looks like meaningful text
-            // (contains protocol schemes, or known config markers)
-            if (decoded && (decoded.includes('://') || decoded.includes('proxies:') ||
-                decoded.includes('"outbounds"') || decoded.trimStart().startsWith('{'))) {
+            // (proxy URI schemes, or known subscription/config format markers)
+            if (decoded && (
+                decoded.includes('://') ||
+                decoded.includes('proxies:') ||
+                decoded.includes('"outbounds"') ||
+                decoded.trimStart().startsWith('{') ||
+                /\[(Proxy|General)\]/i.test(decoded)
+            )) {
                 decodedText = decoded;
             }
         } catch (e) {
-            // base64 decoding failed, keep original text
+            // base64 decoding failed or produced invalid UTF-8, keep original text
         }
     }
 
-    // Step 2: Try URL decoding if the (possibly base64-decoded) text contains '%'
+    // Step 2: Try URL decoding if the (possibly decoded) text contains '%'
     if (decodedText.includes('%')) {
         try {
             decodedText = decodeURIComponent(decodedText);
         } catch (urlError) {
-            // Keep the base64-decoded (or original) text as-is
+            // Keep the text as-is (may contain literal '%' that isn't percent-encoding)
         }
     }
 
