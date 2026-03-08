@@ -7,11 +7,11 @@ import { buildSelectorMembers, buildNodeSelectMembers, uniqueNames } from './hel
 import { emitClashRules, sanitizeClashProxyGroups } from './helpers/clashConfigUtils.js';
 
 export class ClashConfigBuilder extends BaseConfigBuilder {
-    constructor(inputString, selectedRules, customRules, baseConfig, lang, userAgent, groupByCountry = false, enableClashUI = false, externalController, externalUiDownloadUrl) {
+    constructor(inputString, selectedRules, customRules, baseConfig, lang, userAgent, groupByCountry = false, enableClashUI = false, externalController, externalUiDownloadUrl, forceProvider = false) {
         if (!baseConfig) {
             baseConfig = CLASH_CONFIG;
         }
-        super(inputString, baseConfig, lang, userAgent, groupByCountry);
+        super(inputString, baseConfig, lang, userAgent, groupByCountry, forceProvider);
         this.selectedRules = selectedRules;
         this.customRules = customRules;
         this.countryGroupNames = [];
@@ -28,6 +28,14 @@ export class ClashConfigBuilder extends BaseConfigBuilder {
      */
     isCompatibleProviderFormat(format) {
         return format === 'clash';
+    }
+
+    /**
+     * Clash Meta always supports proxy-providers
+     * @returns {boolean}
+     */
+    canUseAsProvider() {
+        return true;
     }
 
     /**

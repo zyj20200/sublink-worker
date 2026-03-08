@@ -4,7 +4,7 @@ import { createTranslator } from '../i18n/index.js';
 import { generateRules, getOutbounds, PREDEFINED_RULE_SETS } from '../config/index.js';
 
 export class BaseConfigBuilder {
-    constructor(inputString, baseConfig, lang, userAgent, groupByCountry = false) {
+    constructor(inputString, baseConfig, lang, userAgent, groupByCountry = false, forceProvider = false) {
         this.inputString = inputString;
         this.config = deepCopy(baseConfig);
         this.customRules = [];
@@ -13,6 +13,7 @@ export class BaseConfigBuilder {
         this.userAgent = userAgent;
         this.appliedOverrideKeys = new Set();
         this.groupByCountry = groupByCountry;
+        this.forceProvider = forceProvider; // Force all HTTP URLs to be used as providers
         this.providerUrls = [];  // URLs to use as providers (auto-sync)
         this.subscriptionGroups = []; // Track proxies by subscription source
     }
@@ -119,6 +120,25 @@ export class BaseConfigBuilder {
                             fetchUrl = urlObj.toString();
                         }
                     } catch (e) {}
+
+                    // If forceProvider mode and builder supports it, add URL directly without fetching
+                    if (this.forceProvider && this.canUseAsProvider()) {
+                        this.providerUrls.push(fetchUrl);
+                        let finalName = currentGroupName || urlSubName;
+                        if (!finalName) {
+                            try {
+                                finalName = new URL(fetchUrl).hostname;
+                            } catch {
+                                finalName = `Provider ${this.providerUrls.length}`;
+                            }
+                        }
+                        this.subscriptionGroups.push({
+                            name: finalName,
+                            type: 'provider',
+                            providerIndex: this.providerUrls.length - 1
+                        });
+                        continue;
+                    }
 
                     try {
                         const fetchResult = await fetchSubscriptionWithFormat(fetchUrl, this.userAgent);
@@ -266,6 +286,15 @@ export class BaseConfigBuilder {
      * @returns {boolean} - True if format can be used as provider
      */
     isCompatibleProviderFormat(format) {
+        return false;  // Default: no provider support
+    }
+
+    /**
+     * Check if this builder supports using URLs as providers at all
+     * Override in child classes that support proxy-providers / outbound_providers
+     * @returns {boolean} - True if the builder supports provider mode
+     */
+    canUseAsProvider() {
         return false;  // Default: no provider support
     }
 

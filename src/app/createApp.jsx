@@ -88,6 +88,7 @@ export function createApp(bindings = {}) {
             const requestedSingboxVersion = c.req.query('singbox_version') || c.req.query('sb_version') || c.req.query('sb_ver');
             const requestUserAgent = getRequestHeader(c.req, 'User-Agent');
             const singboxConfigVersion = resolveSingboxConfigVersion(requestedSingboxVersion, requestUserAgent);
+            const forceProvider = parseBooleanFlag(c.req.query('use_provider'));
 
             let baseConfig = singboxConfigVersion === '1.11' ? SING_BOX_CONFIG_V1_11 : SING_BOX_CONFIG;
             if (configId) {
@@ -109,7 +110,8 @@ export function createApp(bindings = {}) {
                 enableClashUI,
                 externalController,
                 externalUiDownloadUrl,
-                singboxConfigVersion
+                singboxConfigVersion,
+                forceProvider
             );
             await builder.build();
             return c.json(builder.config);
@@ -134,6 +136,7 @@ export function createApp(bindings = {}) {
             const externalUiDownloadUrl = c.req.query('external_ui_download_url');
             const configId = c.req.query('configId');
             const lang = c.get('lang');
+            const forceProvider = parseBooleanFlag(c.req.query('use_provider'));
 
             let baseConfig;
             if (configId) {
@@ -151,7 +154,8 @@ export function createApp(bindings = {}) {
                 groupByCountry,
                 enableClashUI,
                 externalController,
-                externalUiDownloadUrl
+                externalUiDownloadUrl,
+                forceProvider
             );
             await builder.build();
             return c.text(builder.formatConfig(), 200, {

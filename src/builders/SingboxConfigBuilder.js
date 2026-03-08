@@ -6,9 +6,9 @@ import { addProxyWithDedup } from './helpers/proxyHelpers.js';
 import { buildSelectorMembers as buildSelectorMemberList, buildNodeSelectMembers, uniqueNames } from './helpers/groupBuilder.js';
 
 export class SingboxConfigBuilder extends BaseConfigBuilder {
-    constructor(inputString, selectedRules, customRules, baseConfig, lang, userAgent, groupByCountry = false, enableClashUI = false, externalController, externalUiDownloadUrl, singboxVersion = '1.12') {
+    constructor(inputString, selectedRules, customRules, baseConfig, lang, userAgent, groupByCountry = false, enableClashUI = false, externalController, externalUiDownloadUrl, singboxVersion = '1.12', forceProvider = false) {
         const resolvedBaseConfig = baseConfig ?? SING_BOX_CONFIG;
-        super(inputString, resolvedBaseConfig, lang, userAgent, groupByCountry);
+        super(inputString, resolvedBaseConfig, lang, userAgent, groupByCountry, forceProvider);
 
         this.selectedRules = selectedRules;
         this.customRules = customRules;
@@ -36,6 +36,14 @@ export class SingboxConfigBuilder extends BaseConfigBuilder {
             return false;
         }
         return format === 'singbox';
+    }
+
+    /**
+     * SingBox 1.12+ supports outbound_providers
+     * @returns {boolean}
+     */
+    canUseAsProvider() {
+        return this.singboxVersion !== '1.11';
     }
 
     /**
