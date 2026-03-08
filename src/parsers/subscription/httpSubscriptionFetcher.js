@@ -7,22 +7,36 @@ import { parseSubscriptionContent } from './subscriptionContentParser.js';
  * @returns {string} - Decoded content
  */
 function decodeContent(text) {
-    let decodedText;
-    try {
-        decodedText = decodeBase64(text.trim());
-        if (decodedText.includes('%')) {
-            decodedText = decodeURIComponent(decodedText);
-        }
-    } catch (e) {
-        decodedText = text;
-        if (decodedText.includes('%')) {
-            try {
-                decodedText = decodeURIComponent(decodedText);
-            } catch (urlError) {
-                console.warn('Failed to URL decode the text:', urlError);
+    let decodedText = text;
+
+    // Step 1: Try Base64 decoding.
+    // Strip all whitespace first, since base64 content may contain line breaks
+    // (e.g. MIME-style 76-char wrapping).
+    const sanitized = text.replace(/\s+/g, '');
+    const isBase64Like = /^[A-Za-z0-9+/]+=*$/.test(sanitized) && sanitized.length > 0;
+    if (isBase64Like) {
+        try {
+            const decoded = decodeBase64(sanitized);
+            // Only accept the decoded result if it looks like meaningful text
+            // (contains protocol schemes, or known config markers)
+            if (decoded && (decoded.includes('://') || decoded.includes('proxies:') ||
+                decoded.includes('"outbounds"') || decoded.trimStart().startsWith('{'))) {
+                decodedText = decoded;
             }
+        } catch (e) {
+            // base64 decoding failed, keep original text
         }
     }
+
+    // Step 2: Try URL decoding if the (possibly base64-decoded) text contains '%'
+    if (decodedText.includes('%')) {
+        try {
+            decodedText = decodeURIComponent(decodedText);
+        } catch (urlError) {
+            // Keep the base64-decoded (or original) text as-is
+        }
+    }
+
     return decodedText;
 }
 
