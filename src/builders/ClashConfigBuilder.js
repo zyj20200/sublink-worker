@@ -482,10 +482,11 @@ export class ClashConfigBuilder extends BaseConfigBuilder {
 
     formatConfig() {
         const rules = this.generateRules();
-        const { site_rule_providers, ip_rule_providers } = generateClashRuleSets(this.selectedRules, this.customRules);
+        const { site_rule_providers, ip_rule_providers, url_rule_providers } = generateClashRuleSets(this.selectedRules, this.customRules);
         this.config['rule-providers'] = {
             ...site_rule_providers,
-            ...ip_rule_providers
+            ...ip_rule_providers,
+            ...url_rule_providers
         };
         const ruleResults = emitClashRules(rules, this.t);
 

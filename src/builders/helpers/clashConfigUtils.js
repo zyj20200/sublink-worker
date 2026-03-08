@@ -43,7 +43,27 @@ export function emitClashRules(rules = [], translator) {
             });
         });
 
+    rules
+        .filter(rule => Array.isArray(rule.rule_url) && rule.rule_url.length > 0)
+        .forEach(rule => {
+            rule.rule_url.forEach(url => {
+                const tag = extractTagFromUrl(url);
+                results.push(`RULE-SET,${tag},${translator('outboundNames.' + rule.outbound)}`);
+            });
+        });
+
     return results;
+}
+
+// Helper to extract a tag name from a URL (uses filename without extension)
+function extractTagFromUrl(url) {
+    try {
+        const pathname = new URL(url).pathname;
+        const filename = pathname.split('/').pop();
+        return filename.replace(/\.[^.]+$/, '') || 'custom-ruleset';
+    } catch {
+        return 'custom-ruleset';
+    }
 }
 
 const normalize = (s) => typeof s === 'string' ? s.trim() : s;

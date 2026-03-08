@@ -6,6 +6,31 @@
 import { UNIFIED_RULES, PREDEFINED_RULE_SETS, SITE_RULE_SETS, IP_RULE_SETS, CLASH_SITE_RULE_SETS, CLASH_IP_RULE_SETS } from './rules.js';
 import { SITE_RULE_SET_BASE_URL, IP_RULE_SET_BASE_URL, CLASH_SITE_RULE_SET_BASE_URL, CLASH_IP_RULE_SET_BASE_URL } from './ruleUrls.js';
 
+// Helper to extract a tag name from a URL (uses filename without extension)
+function extractTagFromUrl(url) {
+	try {
+		const pathname = new URL(url).pathname;
+		const filename = pathname.split('/').pop();
+		return filename.replace(/\.[^.]+$/, '') || 'custom-ruleset';
+	} catch {
+		return 'custom-ruleset';
+	}
+}
+
+// Helper to detect rule provider format and extension from URL
+function detectRuleFormat(url) {
+	try {
+		const pathname = new URL(url).pathname;
+		const ext = pathname.split('.').pop().toLowerCase();
+		if (ext === 'list' || ext === 'txt') {
+			return { format: 'text', ext };
+		}
+		return { format: 'yaml', ext: 'yaml' };
+	} catch {
+		return { format: 'yaml', ext: 'yaml' };
+	}
+}
+
 // Helper function to get outbounds based on selected rule names
 export function getOutbounds(selectedRuleNames) {
 	if (!selectedRuleNames || !Array.isArray(selectedRuleNames)) {
@@ -49,6 +74,7 @@ export function generateRules(selectedRules = [], customRules = []) {
 			domain_keyword: rule.domain_keyword ? rule.domain_keyword.split(',') : [],
 			ip_cidr: rule.ip_cidr ? rule.ip_cidr.split(',') : [],
 			protocol: rule.protocol ? rule.protocol.split(',') : [],
+			rule_url: rule.rule_url ? rule.rule_url.split(',').map(u => u.trim()).filter(u => u) : [],
 			outbound: rule.name
 		});
 	});
@@ -192,6 +218,7 @@ export function generateClashRuleSets(selectedRules = [], customRules = []) {
 	}
 
 	// Add custom rules
+	const url_rule_providers = {};
 	if (customRules) {
 		customRules.forEach(rule => {
 			if (rule.site && rule.site != '') {
@@ -220,8 +247,24 @@ export function generateClashRuleSets(selectedRules = [], customRules = []) {
 					};
 				});
 			}
+			if (rule.rule_url && rule.rule_url != '') {
+				rule.rule_url.split(',').forEach(url => {
+					const trimmedUrl = url.trim();
+					if (!trimmedUrl) return;
+					const urlTag = extractTagFromUrl(trimmedUrl);
+					const { format, ext } = detectRuleFormat(trimmedUrl);
+					url_rule_providers[urlTag] = {
+						type: 'http',
+						format,
+						behavior: 'classical',
+						url: trimmedUrl,
+						path: `./ruleset/${urlTag}.${ext}`,
+						interval: 86400
+					};
+				});
+			}
 		});
 	}
 
-	return { site_rule_providers, ip_rule_providers };
+	return { site_rule_providers, ip_rule_providers, url_rule_providers };
 }
